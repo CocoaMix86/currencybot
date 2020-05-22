@@ -1,6 +1,10 @@
 module.exports = {
 	name: 'get',
 	description: 'adds any amount of any currency to the account',
+	aliases: ['g', 'add'],
+	args: true,
+	arglength: 2,
+	usage: '<currency name> <amount>',
 	execute(message, args) {
 		Start(message, args);
 	},
@@ -13,18 +17,20 @@ var pad = require('pad-right');
 //
 //SQL
 const sqlite3 = require('sqlite3').verbose();
-
-let db = openDB()
+let db = new sqlite3.Database('./currencybot.db', (err) => {
+  if (err) {
+    console.error(err.message);
+  }
+  console.log('GET - Connected to CurrencyBot database');
+});
 
 
 //Check input arguements
 function Start(message, args){
 	var _account = message.author.id
-	if (!args.length)
-		message.channel.send('No arguments provided.')
-	else {
-		var _currency = args[0].toString()
-		var _amount = parseFloat(args[1])
+	var _currency = args[0].toString()
+	var _amount = parseFloat(args[1]).toFixedDown(4)
+	
 		if (_currency.length > 20)
 			message.channel.send('Currency NAME specified was greater than 20 characters long. Please use UNICODE characters only.')
 		else if (isNaN(_amount))
@@ -33,35 +39,15 @@ function Start(message, args){
 			message.channel.send('Amount specified is TOO LARGE! Maximum 1e100.')
 		else if (_amount <= 0)
 			message.channel.send('Amount cannot be 0 or less.')
-		else if (_currency.includes("`") || _currency.includes(";") || _currency.includes("'") || _currency.includes("\\") || _currency.includes("\\") || _currency.includes("\"") || _currency.includes("'"))
-			message.channel.send('Currency NAME contains an illegal charcter **[  `  ;  \'  \\  |  \'  "  ]**')
+		else if (_currency.includes("`") || _currency.includes(";") || _currency.includes("'") || _currency.includes("\\") || _currency.includes("\\") || _currency.includes("\"") || _currency.includes("'") || _currency.includes("@"))
+			message.channel.send('Currency NAME contains an illegal charcter **[  `  ;  \'  \\  |  \'  "  @  ]**')
 		else if (_currency.length < 1)
 			message.channel.send('Currency NAME cannot be empty.')	
 		else
-			AccountCheck([_currency, _amount, message]);
-	}
+			CurrencyExist([_currency, _amount, message]);
 }
 
 //
-//Checks if user exists or not
-async function AccountCheck(message){
-	var _account = message[2].author.id
-	var _exists = false
-	let sql = 'SELECT 1 FROM Accounts WHERE account_id=' + _account
-	
-	db.each(sql, [], (err, rows) => {
-		if (rows !== null)
-			_exists = true
-		
-	}, function (err, rows) {
-		if (_exists) {
-			CurrencyExist(message)
-		}
-		else
-			message[2].channel.send('your account does not exist. Please use `$account` first')
-	});
-}
-
 //Check if input currency exists or not
 async function CurrencyExist(message){
 	var _exists = false
@@ -122,10 +108,10 @@ function Embed_Added(message){
 async function NewCurrency(message){
 	var _currencyid
 	var _amount = message[1]
-	var _value = randn_bm(0, 100000, 8)
+	var _value = randn_bm(0, 10000, 5)
 	await new Promise(resolve => setTimeout(resolve, 200));
 	
-	let sql0 = 'INSERT INTO Currencies (name, value, owner_id) VALUES(\'' + message[0] + '\',' + _value + ',' + message[2].author.id +')'
+	let sql0 = 'INSERT INTO Currencies (name, value, owner_id, tax) VALUES(\'' + message[0] + '\',' + _value + ',' + message[2].author.id +',0.01)'
 	db.run(sql0, [], () =>{}, function (err, rows) {
 		Embed_Discovery(message, _value)
 		AddToAccount(message)
@@ -156,7 +142,7 @@ function randn_bm(min, max, skew) {
     let num = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
 
     num = num / 10.0 + 0.5; // Translate to 0 -> 1
-    if (num > 1 || num < 0) num = randn_bm(min, max, skew); // resample between 0 and 1 if out of range
+    //if (num > 1 || num < 0) num = randn_bm(min, max, skew); // resample between 0 and 1 if out of range
     num = Math.pow(num, skew); // Skew
     num *= max - min; // Stretch to fill range
     num += min; // offset to min
@@ -164,12 +150,8 @@ function randn_bm(min, max, skew) {
     return num;
 }
 
-function openDB() {
-	var _db = new sqlite3.Database('./currencybot.db', (err) => {
-		if (err) {
-			console.error(err.message);
-		}
-		console.log('GET - Connected to CurrencyBot database');
-	});
-	return _db
-}
+Number.prototype.toFixedDown = function(digits) {
+    var re = new RegExp("(\\d+\\.\\d{" + digits + "})(\\d)"),
+        m = this.toString().match(re);
+    return m ? parseFloat(m[1]) : this.valueOf();
+};

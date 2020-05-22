@@ -1,6 +1,7 @@
 module.exports = {
 	name: 'account',
 	description: 'Gets account info of user',
+	aliases: ['a', 'acc'],
 	execute(message, args) {
 		Start(message, args)
 	},
@@ -25,84 +26,34 @@ let db = new sqlite3.Database('./currencybot.db', (err) => {
 //filters input
 function Start(message, args){
 	if (!args.length)
-		AccountCheck(message, [1,"value","desc"])
+		GetBalance(message, [1,"value","desc"])
 	//test page number arg
-	else {
-		if (isNaN(args[0]))
-			message.channel.send('Page number specified was not a number.')
-		else if (!isFinite(args[0]))
-			message.channel.send('Page number specified was too large.')
+	else if (!isNaN(args[0])) {
+		if (args[0] > 100000)
+			args[0] = 100000
 		else if (args[0] <= 0)
-			message.channel.send('Page number specified cannot be 0 or less.')
+			args[0] = 1
 		//test sort value
-		else {
-			args[0] = Math.floor(args[0])
+		args[0] = Math.floor(args[0])
 			if (typeof args[1] == 'undefined')
-				AccountCheck(message,[args[0],"value","desc"])
+				GetBalance(message,[args[0],"value","desc"])
 			else if (args[1] !== 'sort')
-				message.channel.send('argument ' + args[1] + ' not recognized. It should be `sort`.')
+				message.channel.send('argument `' + args[1] + '` not recognized. It must be `sort`.')
 			else if (args[2] !== 'value' && args[2] !== 'amount' && args[2] !== 'name')
 				message.channel.send('`sort` must be `value`, `amount`, or `name`.')
-			else if (args[3] !== 'asc' && args[2] !== 'desc')
+			else if (args[3] !== 'asc' && args[3] !== 'desc')
 				message.channel.send('`sort direction` must be `asc` or `desc`.')
 			else
-				AccountCheck(message,[args[0], args[2], args[3]])
-		}
+				GetBalance(message,[args[0], args[2], args[3]])
+		
 	}
-}
-
-
-//
-//Checks if user exists or not
-async function AccountCheck(message, args){
-	var _account = message.author.id
-	var _exists = false
-	let sql = 'SELECT 1 FROM Accounts WHERE account_id=' + _account
-	db.each(sql, [], (err, rows) => {
-		if (rows !== null)
-			_exists = true
-	});
-	
-	await new Promise(resolve => setTimeout(resolve, 10));
-	if (_exists)
-		GetBalance(message, args)
+	else if (args[0] == 'currencyowned' || args[0] == 'co') {}
 	else
-		NewAccount(message)
+		message.channel.send("argument `" + args[0] + "` not recognized.")
 }
 
-
 //
-//Add entries to SQL for new account
-function NewAccount(message){
-	var _account = message.author.id
-	let sql = 'INSERT INTO Accounts (account_id, created_date) VALUES(' + _account + ', DATE())'
-	let sql2 = 'INSERT INTO CurrencyEntry (account_id, currency_id, amount) VALUES(' + _account + ', "money", 500)'
-	
-	db.serialize(() => {
-		db.run(sql).run(sql2)
-	});
-	
-	message.channel.send(Embed_NewAccount())
-}
-//
-//Message to display when a new account is created
-function Embed_NewAccount(){
-	
-	const Embed = new Discord.MessageEmbed()
-	.setColor('#009900')
-	.setTitle('NOTICE')
-	.setThumbnail('https://i.imgur.com/IHAnl9m.png')
-	.addFields(
-		{ name: 'New Account Activation', value: 'Welcome new member to "Currency Of The Masses", where you can trade many useless currencies, for other useless currencies. A new account has been setup for you! 500💰 has been added to your new account as a starting bonus!\nUse `$account` to view your account balance.' },
-	)
-
-	return Embed;
-}
-
-
-
-//
-//Account Exists
+//Gets users balance of all currencies
 async function GetBalance(message, args){
 	var _sort = args[1]
 	var _direction = args[2].toUpperCase()
@@ -153,6 +104,11 @@ function Embed_AccountBalance(_balance, _total, args){
 	return Embed;
 }
 
+//
+//Gets owned currencies
+function OwnedCurrencies(message, args){
+	
+}
 
 function ExponentNotation(x, f) {
 	return Number.parseFloat(x).toExponential(f);

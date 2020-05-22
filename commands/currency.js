@@ -1,8 +1,8 @@
 module.exports = {
 	name: 'currency',
 	description: 'gets info about different currencies',
-	execute(message, args, client) {
-		_client = client
+	aliases: ['c', 'curr'],
+	execute(message, args) {
 		Start(message, args);
 	},
 };
@@ -11,7 +11,6 @@ const Discord = require('discord.js');
 const client = new Discord.Client();
 var fs = require('fs');
 var pad = require('pad-right');
-var _client
 
 //
 //SQL
@@ -30,28 +29,25 @@ function Start(message, args){
 	//if no arguements, default page to 1
 	if (!args.length)
 		GetCurrencies(message, [1])
-	else if (args[0] == 'view') {
+	else if (args[0] == 'view' || args[0] == 'v') {
 		if (typeof args[1] == 'undefined')
 			message.channel.send('A currency was not specified to view')
 		else
 			ViewCurrency(message, args)
 	}
-	else {
-		if (isNaN(args[0]))
-			message.channel.send('Page number specified was not a number.')
-		else if (!isFinite(args[0]))
-			message.channel.send('Page number specified was too large.')
+	else if (!isNaN(args[0])) {
+		if (args[0] > 100000)
+			args[0] = 100000
 		else if (args[0] <= 0)
-			message.channel.send('Page number specified cannot be 0 or less.')
-		else {
-			args[0] = Math.floor(args[0])
-			GetCurrencies(message, args)
-		}
+			args[0] = 1
+		
+		args[0] = Math.floor(args[0])
+		GetCurrencies(message, args)
 	}
 }
 
 //
-//Account Exists
+//Get list of all existing currencies
 async function GetCurrencies(message, args){
 	var _balance = []
 	let sql = 'SELECT c.name,c.value,SUM(a.amount) as amount FROM CurrencyEntry a, Currencies c WHERE a.currency_id=c.name Group BY a.currency_id ORDER BY c.value DESC'
@@ -99,7 +95,7 @@ function ViewCurrency(message, args){
 	var _output = ''
 	var _exists = false
 	let sql1 = 'SELECT 1 FROM Currencies WHERE name=\'' + args[1] + '\''
-	let sql2 = 'SELECT c.name,c.value,CAST(c.owner_id AS TEXT) as owner_id,CAST(SUM(a.amount) as TEXT) as amount FROM CurrencyEntry a, Currencies c WHERE a.currency_id=c.name AND c.name="' + args[1] + '" Group BY a.currency_id ORDER BY c.value DESC'
+	let sql2 = 'SELECT c.name,c.value,CAST(c.owner_id AS TEXT) as owner_id,c.tax,CAST(SUM(a.amount) as TEXT) as amount FROM CurrencyEntry a, Currencies c WHERE a.currency_id=c.name AND c.name="' + args[1] + '" Group BY a.currency_id ORDER BY c.value DESC'
 	
 	db.each(sql1, [], (err, rows) => {
 		if (rows !== null)
@@ -109,7 +105,7 @@ function ViewCurrency(message, args){
 		//if exists, get data of currency and output message to channel
 		if (_exists) {
 			db.each(sql2, [], (err, row) => {
-				_output = '**NAME:** ' + row.name + "\n**VALUE:** " + row.value + "x💰\n**EXISTING:** " + row.amount + '\n**OWNER:** <@' + row.owner_id + '>'
+				_output = '**NAME:** ' + row.name + "\n**VALUE:** " + row.value + "x💰\n**EXISTING:** " + row.amount + '\n**OWNER:** <@' + row.owner_id + '>\n**EXCHANGE TAX:** ' + row.tax + "%"
 			}, function (err, row){
 				message.channel.send(Embed_View(message, _output))
 			});
