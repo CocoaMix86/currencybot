@@ -9,7 +9,7 @@ client.commands = new Discord.Collection();
 
 //
 //adjustable prefix
-var prefix = "$";
+var prefix = '$'
 
 //
 //Client auth
@@ -19,7 +19,7 @@ client.once('ready', () => {
 client.login(config.token);
 
 client.on("ready", () => {
-    client.user.setActivity("you", { type: "WATCHING"})
+    client.user.setActivity("the markets", { type: "WATCHING"})
 })
 
 //
@@ -56,7 +56,7 @@ client.on('message', message => {
 		let reply = `The bankers look at you sternly for your misuse of that command, ${message.author}!`;
 		if (command.usage) 
 			reply += `\nThe proper usage is: \`${prefix}${command.name} ${command.usage}\``;
-		return message.channel.send(reply);
+		return Embed_Help(message, args, reply);
 	}
 	
 	AccountCheck(message)
@@ -64,7 +64,7 @@ client.on('message', message => {
 	try {
 		command.execute(message, args);
 	} catch (error) {
-		console.error(error);
+		
 	}
 });
 
@@ -72,11 +72,11 @@ client.on('message', message => {
 //
 //Runs SQL query to determine if the author ID exists in the Accounts database
 function AccountCheck(message){
-	var _account = message.author.id
+	var _account = 'a' + message.author.id
 	var _exists = false
-	let sql = 'SELECT 1 FROM Accounts WHERE account_id=' + _account
+	let sql = 'SELECT 1 FROM Accounts WHERE account_id = ?'
 	
-	db.each(sql, [], (err, rows) => {
+	db.each(sql, _account, (err, rows) => {
 		if (rows !== null)
 			_exists = true
 		
@@ -88,12 +88,12 @@ function AccountCheck(message){
 //
 //Add entries to SQL for new account
 function NewAccount(message){
-	var _account = message.author.id
-	let sql = 'INSERT INTO Accounts (account_id, created_date) VALUES(' + _account + ', DATE())'
-	let sql2 = 'INSERT INTO CurrencyEntry (account_id, currency_id, amount) VALUES(' + _account + ', "money", 500)'
+	var _account = 'a' + message.author.id
+	let sql = 'INSERT INTO Accounts (account_id, created_date) VALUES( ? , DATE())'
+	let sql2 = 'INSERT INTO CurrencyEntry (account_id, currency_id, amount) VALUES( ? , "money", 500)'
 	
 	db.serialize(() => {
-		db.run(sql).run(sql2)
+		db.run(sql, _account).run(sql2, _account)
 	});
 	
 	message.channel.send(Embed_NewAccount(_account))
@@ -107,8 +107,24 @@ function Embed_NewAccount(_account){
 	.setTitle('NOTICE')
 	.setThumbnail('https://i.imgur.com/IHAnl9m.png')
 	.addFields(
-		{ name: 'New Account Activation', value: 'Welcome <@' + _account + '> to "Currency Of The Masses", where you can trade many useless currencies, for other useless currencies. A new account has been setup for you! 500💰 has been added to your new account as a starting bonus!\nUse `$account` to view your account balance.' },
+		{ name: 'New Account Activation', value: 'Welcome <@' + _account.substr(1) + '> to "Currency Of The Masses", where you can trade many useless currencies, for other useless currencies. A new account has been setup for you! 500💰 has been added to your new account as a starting bonus!\nUse `$account` to view your account balance.' },
 	)
 
 	return Embed;
+}
+
+//
+//Outputs message to channel containing help info
+function Embed_Help(message, args, help){
+
+	const Embed = new Discord.MessageEmbed()
+	.setColor('#009900')
+	.setTitle(`$help`)
+	.setDescription(`requested by ${message.author}\nPlease use \`$help\``)
+	.setThumbnail('https://i.imgur.com/IHAnl9m.png')
+	.addFields(
+		{ name: 'Help Text', value: help},
+	)
+
+	message.channel.send(Embed)
 }

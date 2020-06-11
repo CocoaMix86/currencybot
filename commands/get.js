@@ -1,18 +1,19 @@
 module.exports = {
 	name: 'get',
-	description: 'adds any amount of any currency to the account',
+	description: 'Adds any amount of any currency to the account',
 	aliases: ['g', 'add'],
 	args: true,
 	arglength: 2,
-	usage: '<currency name> <amount>',
+	usage: '<currency name> <amount> [skew]',
+	details: `\`[skew]\` adjusts the value of the currency when being generated. A higher value skews the rng towards 1. A lower number skews away from 1. Default is 20.`,
 	execute(message, args) {
 		Start(message, args);
 	},
 };
 
 const Discord = require('discord.js');
-var fs = require('fs');
-var pad = require('pad-right');
+var Decimal = require('decimal.js')
+Decimal.set({ precision: 40, rounding: 1 })
 
 //
 //SQL
@@ -27,110 +28,113 @@ let db = new sqlite3.Database('./currencybot.db', (err) => {
 
 //Check input arguements
 function Start(message, args){
-	var _account = message.author.id
-	var _currency = args[0].toString()
-	var _amount = parseFloat(args[1]).toFixedDown(4)
+	//var args[1] = parseFloat(args[1]).toFixedDown(15)
 	
-		if (_currency.length > 20)
-			message.channel.send('Currency NAME specified was greater than 20 characters long. Please use UNICODE characters only.')
-		else if (isNaN(_amount))
-			message.channel.send('no amount specified for currency, OR you had spaces in the currency NAME.')
-		else if (!isFinite(_amount) || _amount > 1e100)
+	if (isNaN(args[2]) || !isFinite(args[2]))
+		args[2] = 20
+	
+		if (args[0].length > 40)
+			message.channel.send('Currency NAME specified was greater than 40 characters long. Please use UNICODE characters only.')
+		else if (isNaN(args[1]))
+			message.channel.send('Amount entered was not a valid number, or you had spaces in the currency\'s name.')
+		else if (!isFinite(args[1]) || args[1] > 1e100)
 			message.channel.send('Amount specified is TOO LARGE! Maximum 1e100.')
-		else if (_amount <= 0)
+		else if (args[1] <= 0)
 			message.channel.send('Amount cannot be 0 or less.')
-		else if (_currency.includes("`") || _currency.includes(";") || _currency.includes("'") || _currency.includes("\\") || _currency.includes("\\") || _currency.includes("\"") || _currency.includes("'") || _currency.includes("@"))
-			message.channel.send('Currency NAME contains an illegal charcter **[  `  ;  \'  \\  |  \'  "  @  ]**')
-		else if (_currency.length < 1)
+		else if (/[`;\'\\|\'"@]+/.test(args[0]))
+			message.channel.send('Currency NAME contains an illegal charcter **[  `  ;   \\  |  \'  "  @  ]**')
+		else if (args[0].length < 1)
 			message.channel.send('Currency NAME cannot be empty.')	
-		else
-			CurrencyExist([_currency, _amount, message]);
+		else {
+			args[1] = new Decimal(args[1])
+			CurrencyExist(message, args);
+		}
 }
 
 //
 //Check if input currency exists or not
-async function CurrencyExist(message){
+async function CurrencyExist(message, args){
 	var _exists = false
-	var _currency = message[0]
-	let sql = 'SELECT 1 FROM Currencies WHERE name=\'' + _currency + '\''
+	let sql = 'SELECT 1 FROM Currencies WHERE name= ?'
 	
-	db.each(sql, [], (err, rows) => {
+	db.each(sql, args[0], (err, rows) => {
 		if (rows !== null)
 			_exists = true
 		
 	}, function (err, rows) {
 		//if exists, add amount to account
 		if (_exists)
-			AddToAccount(message)
+			AddToAccount(message, args)
 		//if it doesn't exist, generate it and a random value for it. Then add to account
 		else
-			NewCurrency(message)
+			NewCurrency(message, args)
 	});
 }
 
 //
 //Currency Exists
-function AddToAccount(message){
-	_amount = message[1]
+function AddToAccount(message, args){
+	_account = 'a'+message.author.id
+	_amount = args[1]
 	
-	let sql1 = 'SELECT * FROM CurrencyEntry WHERE account_id=' + message[2].author.id + ' AND currency_id="' + message[0] + '"'
-	let sql2 = 'INSERT INTO CurrencyEntry VALUES(' + message[2].author.id + ',"' + message[0] + '",' + _amount + ')'
+	let sql1 = 'SELECT * FROM CurrencyEntry WHERE account_id= ? AND currency_id= ?'
+	let sql2 = 'INSERT INTO CurrencyEntry VALUES("' + _account + '","' + args[0] + '",' + _amount + ')'
 		
-	db.each(sql1, [], (err, rows) => {
+	db.each(sql1, [_account, args[0]], (err, rows) => {
 		//The internals of this only run if a currency entry exists for the user.
 		//It is skipped if the user does not have it yet
 		if (typeof rows !== 'undefined') {
-			_amount = rows.amount + message[1]
-			sql2 = 'UPDATE CurrencyEntry SET amount=' + _amount + ' WHERE account_id=' + message[2].author.id + ' AND currency_id="' + rows.currency_id + '"'
+			_amount = _amount.plus(rows.amount)
+			sql2 = 'UPDATE CurrencyEntry SET amount=' + _amount + ' WHERE account_id="' + _account + '" AND currency_id="' + rows.currency_id + '"'
 		}
 	}, function (err, rows) {
 		db.run(sql2)
-		Embed_Added(message)
+		Embed_Added(message, args)
 	});
 		
 }
-function Embed_Added(message){
+function Embed_Added(message, args){
 	
 	const Embed = new Discord.MessageEmbed()
 	.setColor('#009900')
 	.setTitle('NOTICE')
 	.setThumbnail('https://i.imgur.com/IHAnl9m.png')
 	.addFields(
-		{ name: 'BANKING RECEIPT', value: message[1] + ' units of `' + message[0] + '` was deposited into your account! Thank you for choosing Currency Of The Masses.'},
+		{ name: 'BANKING RECEIPT', value: args[1] + ' `' + args[0] + '` was deposited into your account! Thank you for choosing Currency Of The Masses.'},
 	)
 
-	message[2].channel.send(Embed)
+	message.channel.send(Embed)
 }
 
 
 //
 //New Currency
-async function NewCurrency(message){
-	var _currencyid
-	var _amount = message[1]
-	var _value = randn_bm(0, 10000, 5)
+async function NewCurrency(message, args){
+	var _account = 'a'+message.author.id
+	var _value = randn_bm(1, 1000000, args[2])
 	await new Promise(resolve => setTimeout(resolve, 200));
 	
-	let sql0 = 'INSERT INTO Currencies (name, value, owner_id, tax) VALUES(\'' + message[0] + '\',' + _value + ',' + message[2].author.id +',0.01)'
-	db.run(sql0, [], () =>{}, function (err, rows) {
-		Embed_Discovery(message, _value)
-		AddToAccount(message)
+	let sql0 = 'INSERT INTO Currencies (name, value, owner_id, tax) VALUES( ? , ? , ? ,0.01)'
+	db.run(sql0, [args[0], _value, _account], () =>{}, function (err, rows) {
+		Embed_Discovery(message, args, _value)
+		AddToAccount(message, args)
 	});
 	//await new Promise(resolve => setTimeout(resolve, 50));
 	
 }
-function Embed_Discovery(message, _value){
+function Embed_Discovery(message, args, _value){
 	
 	const Embed = new Discord.MessageEmbed()
 	.setColor('#009900')
 	.setTitle('NOTICE')
 	.setThumbnail('https://i.imgur.com/IHAnl9m.png')
 	.addFields(
-		{ name: 'YOU\'VE DISCOVERED A NEW CURRENCY', value: '**NAME:** `' + message[0] + '`\n**VALUE:** ' + _value},
+		{ name: 'YOU\'VE DISCOVERED A NEW CURRENCY', value: '**NAME:** `' + args[0] + '`\n**VALUE:** ' + _value},
 	)
 
-	message[2].channel.send(Embed)
+	message.channel.send(Embed)
 }
+
 
 
 
@@ -146,7 +150,11 @@ function randn_bm(min, max, skew) {
     num = Math.pow(num, skew); // Skew
     num *= max - min; // Stretch to fill range
     num += min; // offset to min
-	num = num.toFixed(4)
+	num = num.toFixed(10)
+	
+	if (!isFinite(num) || num > 1e200)
+		num = 1e200
+	
     return num;
 }
 
